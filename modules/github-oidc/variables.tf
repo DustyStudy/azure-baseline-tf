@@ -7,6 +7,30 @@ variable "location" {
   type = string
 }
 
+variable "subject_format" {
+  description = <<-EOT
+    Which `sub` claim format GitHub emits for the repositories below.
+
+    "immutable" (default): repo:<owner>@<owner-id>/<repo>@<repo-id>:<suffix> -
+    what GitHub emits for repositories with `use_immutable_subject` (the default
+    for recently created repos). It also pins the numeric IDs, so a renamed,
+    deleted or re-created repository cannot impersonate a trusted one.
+
+    "classic": repo:<owner>/<repo>:<suffix>.
+
+    Azure matches a federated credential's subject EXACTLY, and a wrong format
+    does not error - authentication just never succeeds. Check yours with:
+      gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "immutable"
+
+  validation {
+    condition     = contains(["immutable", "classic"], var.subject_format)
+    error_message = "subject_format must be \"immutable\" or \"classic\"."
+  }
+}
+
 variable "deployers" {
   description = <<-EOT
     One entry per GitHub repository that may deploy, keyed by a short name
@@ -22,10 +46,12 @@ variable "deployers" {
     narrowly as the pipeline allows.
   EOT
   type = map(object({
-    repository   = string
-    environments = optional(list(string), [])
-    branches     = optional(list(string), [])
-    pull_request = optional(bool, false)
+    repository    = string
+    owner_id      = optional(string)
+    repository_id = optional(string)
+    environments  = optional(list(string), [])
+    branches      = optional(list(string), [])
+    pull_request  = optional(bool, false)
     role_assignments = list(object({
       scope = string
       role  = string
@@ -35,6 +61,21 @@ variable "deployers" {
   validation {
     condition     = alltrue([for k, v in var.deployers : can(regex("^[^/]+/[^/]+$", v.repository))])
     error_message = "deployers[*].repository must be in owner/repo form."
+  }
+
+  validation {
+    condition = var.subject_format != "immutable" || alltrue([
+      for k, v in var.deployers : v.owner_id != null && v.repository_id != null
+    ])
+    error_message = "subject_format is \"immutable\", so every deployer needs owner_id and repository_id. Look them up with: gh api repos/<owner>/<repo> -q '.owner.id, .id' (or set subject_format = \"classic\" if the repo's use_immutable_subject is false)."
+  }
+
+  validation {
+    condition = alltrue([
+      for k, v in var.deployers :
+      (v.owner_id == null || can(regex("^[0-9]+$", v.owner_id))) && (v.repository_id == null || can(regex("^[0-9]+$", v.repository_id)))
+    ])
+    error_message = "owner_id and repository_id must be numeric GitHub IDs."
   }
 
   validation {
