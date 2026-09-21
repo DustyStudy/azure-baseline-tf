@@ -11,6 +11,8 @@ variables {
   location                   = "eastus"
   audit_storage_account_name = "acmeauditarchive001"
   github_owner               = "acme"
+  github_owner_id            = "1001"
+  infra_repo_id              = "2002"
 }
 
 run "first_deploy_plans" {
@@ -19,6 +21,11 @@ run "first_deploy_plans" {
   assert {
     condition     = length(module.policy_guardrails.assignments) == 8 && module.policy_guardrails.enforced == false
     error_message = "Composition should plan cleanly with the eight default guardrails in report-only mode."
+  }
+
+  assert {
+    condition     = alltrue([for k, v in module.github_oidc.subjects : startswith(v, "repo:acme@1001/infra@2002:")])
+    error_message = "Subjects must use GitHub's immutable-ID format."
   }
 
   assert {

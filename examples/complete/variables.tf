@@ -61,3 +61,15 @@ variable "infra_repo" {
   type    = string
   default = "infra"
 }
+
+# GitHub's OIDC subject embeds immutable numeric IDs. Look them up with:
+#   gh api repos/<owner>/<repo> -q '.owner.id, .id'
+variable "github_owner_id" {
+  description = "Numeric GitHub owner ID (see the gh command above)."
+  type        = string
+}
+
+variable "infra_repo_id" {
+  description = "Numeric GitHub repository ID of the infra repo."
+  type        = string
+}

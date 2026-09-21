@@ -7,14 +7,24 @@ locals {
   issuer   = "https://token.actions.githubusercontent.com"
   audience = "api://AzureADTokenExchange"
 
+  # The subject prefix GitHub puts in the token, per deployer. Immutable form
+  # pins the numeric owner/repo IDs (see var.subject_format).
+  subject_prefix = {
+    for k, v in var.deployers : k => (
+      var.subject_format == "immutable"
+      ? "repo:${split("/", v.repository)[0]}@${v.owner_id}/${split("/", v.repository)[1]}@${v.repository_id}"
+      : "repo:${v.repository}"
+    )
+  }
+
   # One federated credential per (deployer, entity). The subject claim is what
   # GitHub puts in the token; Azure only accepts a token whose subject matches
   # exactly, so there is no wildcard trust.
   federated_credentials = merge(flatten([
     for k, v in var.deployers : [
-      { for e in v.environments : "${k}:env:${e}" => { deployer = k, name = "${k}-env-${e}", subject = "repo:${v.repository}:environment:${e}" } },
-      { for b in v.branches : "${k}:branch:${b}" => { deployer = k, name = "${k}-branch-${replace(b, "/", "-")}", subject = "repo:${v.repository}:ref:refs/heads/${b}" } },
-      { for x in(v.pull_request ? ["pr"] : []) : "${k}:pr" => { deployer = k, name = "${k}-pull-request", subject = "repo:${v.repository}:pull_request" } },
+      { for e in v.environments : "${k}:env:${e}" => { deployer = k, name = "${k}-env-${e}", subject = "${local.subject_prefix[k]}:environment:${e}" } },
+      { for b in v.branches : "${k}:branch:${b}" => { deployer = k, name = "${k}-branch-${replace(b, "/", "-")}", subject = "${local.subject_prefix[k]}:ref:refs/heads/${b}" } },
+      { for x in(v.pull_request ? ["pr"] : []) : "${k}:pr" => { deployer = k, name = "${k}-pull-request", subject = "${local.subject_prefix[k]}:pull_request" } },
     ]
   ])...)
 

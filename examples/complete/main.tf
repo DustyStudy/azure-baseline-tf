@@ -57,15 +57,19 @@ module "github_oidc" {
 
   deployers = {
     infra = {
-      repository   = "${var.github_owner}/${var.infra_repo}"
-      environments = ["prod"]
+      repository    = "${var.github_owner}/${var.infra_repo}"
+      owner_id      = var.github_owner_id
+      repository_id = var.infra_repo_id
+      environments  = ["prod"]
       role_assignments = [
         { scope = "/subscriptions/${var.subscription_id}", role = "Contributor" },
       ]
     }
     plan = {
-      repository   = "${var.github_owner}/${var.infra_repo}"
-      pull_request = true
+      repository    = "${var.github_owner}/${var.infra_repo}"
+      owner_id      = var.github_owner_id
+      repository_id = var.infra_repo_id
+      pull_request  = true
       role_assignments = [
         { scope = "/subscriptions/${var.subscription_id}", role = "Reader" },
       ]

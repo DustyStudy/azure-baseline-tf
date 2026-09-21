@@ -5,17 +5,21 @@ variables {
   location            = "eastus"
   deployers = {
     infra = {
-      repository   = "acme/infra"
-      environments = ["prod"]
-      branches     = ["main"]
+      repository    = "acme/infra"
+      owner_id      = "1001"
+      repository_id = "2002"
+      environments  = ["prod"]
+      branches      = ["main"]
       role_assignments = [
         { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Contributor" },
         { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Monitoring Reader" },
       ]
     }
     plan = {
-      repository   = "acme/infra"
-      pull_request = true
+      repository    = "acme/infra"
+      owner_id      = "1001"
+      repository_id = "2002"
+      pull_request  = true
       role_assignments = [
         { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Reader" },
       ]
@@ -27,8 +31,8 @@ run "trust_is_exact_subjects" {
   command = plan
 
   assert {
-    condition     = sort(values(output.subjects)) == sort(["repo:acme/infra:environment:prod", "repo:acme/infra:ref:refs/heads/main", "repo:acme/infra:pull_request"])
-    error_message = "Only the listed environment, branch and pull_request subjects may be trusted - no wildcards."
+    condition     = sort(values(output.subjects)) == sort(["repo:acme@1001/infra@2002:environment:prod", "repo:acme@1001/infra@2002:ref:refs/heads/main", "repo:acme@1001/infra@2002:pull_request"])
+    error_message = "Only the listed environment, branch and pull_request subjects may be trusted, in GitHub's immutable-ID format - no wildcards."
   }
 
   assert {
@@ -53,8 +57,10 @@ run "rejects_owner_role" {
   variables {
     deployers = {
       bad = {
-        repository   = "acme/bad"
-        environments = ["prod"]
+        repository    = "acme/bad"
+        owner_id      = "1001"
+        repository_id = "2002"
+        environments  = ["prod"]
         role_assignments = [
           { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Owner" },
         ]
@@ -71,7 +77,9 @@ run "rejects_deployer_with_no_subject" {
   variables {
     deployers = {
       bad = {
-        repository = "acme/bad"
+        repository    = "acme/bad"
+        owner_id      = "1001"
+        repository_id = "2002"
         role_assignments = [
           { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Reader" },
         ]
@@ -106,8 +114,10 @@ run "rejects_scope_that_is_not_an_azure_id" {
   variables {
     deployers = {
       bad = {
-        repository   = "acme/bad"
-        environments = ["prod"]
+        repository    = "acme/bad"
+        owner_id      = "1001"
+        repository_id = "2002"
+        environments  = ["prod"]
         role_assignments = [
           { scope = "everything", role = "Reader" },
         ]
@@ -117,3 +127,78 @@ run "rejects_scope_that_is_not_an_azure_id" {
 
   expect_failures = [var.deployers]
 }
+
+# GitHub emits sub as repo:OWNER@OWNER_ID/REPO@REPO_ID:<suffix> when a repo has
+# use_immutable_subject (true for recently created repos). Azure matches the
+# federated credential's subject EXACTLY, so a classic-format subject would
+# silently never authenticate.
+run "classic_format_is_available_for_repos_that_emit_it" {
+  command = plan
+
+  variables {
+    subject_format = "classic"
+    deployers = {
+      old = {
+        repository   = "acme/legacy"
+        environments = ["prod"]
+        role_assignments = [
+          { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Reader" },
+        ]
+      }
+    }
+  }
+
+  assert {
+    condition     = values(output.subjects) == ["repo:acme/legacy:environment:prod"]
+    error_message = "classic format should produce repo:owner/repo:<suffix> and need no IDs."
+  }
+}
+
+run "immutable_format_requires_the_ids" {
+  command = plan
+
+  variables {
+    deployers = {
+      bad = {
+        repository   = "acme/infra"
+        environments = ["prod"]
+        role_assignments = [
+          { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Reader" },
+        ]
+      }
+    }
+  }
+
+  expect_failures = [var.deployers]
+}
+
+run "rejects_non_numeric_ids" {
+  command = plan
+
+  variables {
+    deployers = {
+      bad = {
+        repository    = "acme/infra"
+        owner_id      = "acme"
+        repository_id = "2002"
+        environments  = ["prod"]
+        role_assignments = [
+          { scope = "/subscriptions/00000000-0000-0000-0000-000000000000", role = "Reader" },
+        ]
+      }
+    }
+  }
+
+  expect_failures = [var.deployers]
+}
+
+run "rejects_unknown_subject_format" {
+  command = plan
+
+  variables {
+    subject_format = "wildcard"
+  }
+
+  expect_failures = [var.subject_format]
+}
+

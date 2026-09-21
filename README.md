@@ -54,10 +54,31 @@ examples/complete/      # the three composed together (plan-tested with unknown 
   federated credentials - no Entra directory permissions needed to create
   them, unlike app registrations. Trust is by exact GitHub subject
   (`environment:<name>`, `ref:refs/heads/<branch>`, `pull_request`), never a
-  wildcard, and `Owner` / `User Access Administrator` /
-  `Role Based Access Control Administrator` are rejected by validation.
+  wildcard, pinned to GitHub's immutable owner/repo IDs (see below). `Owner` /
+  `User Access Administrator` / `Role Based Access Control Administrator` are
+  rejected by validation.
   Use one deployer for `pull_request` plans (read-only) and another for
   environment-gated applies.
+
+## GitHub's immutable OIDC subject
+
+GitHub emits the token `sub` as `repo:<owner>@<owner-id>/<repo>@<repo-id>:<suffix>`
+for repositories with `use_immutable_subject` (the default for recently created
+repos), not the classic `repo:<owner>/<repo>:<suffix>`. Azure matches a federated
+credential's subject **exactly**, so a subject in the wrong format doesn't error -
+authentication just never succeeds.
+
+`github-oidc` therefore defaults to `subject_format = "immutable"` and requires
+`owner_id` and `repository_id` per deployer (it refuses to plan without them):
+
+```bash
+gh api repos/<owner>/<repo>/actions/oidc/customization/sub   # use_immutable_subject: true?
+gh api repos/<owner>/<repo> -q '.owner.id, .id'               # the two IDs
+```
+
+Pinning the IDs also means a renamed, deleted or re-created repository can't
+impersonate a trusted one. Use `subject_format = "classic"` only for a repo whose
+`use_immutable_subject` is `false`.
 
 ## Scope and honesty
 
@@ -85,7 +106,7 @@ terraform -chdir=examples/complete init
 terraform -chdir=examples/complete plan \
   -var subscription_id=... -var policy_scope=/subscriptions/... \
   -var 'allowed_locations=["eastus","westus2"]' -var location=eastus \
-  -var audit_storage_account_name=... -var github_owner=...
+  -var audit_storage_account_name=... -var github_owner=... \n  -var github_owner_id=... -var infra_repo_id=...   # numeric IDs, see "GitHub's immutable OIDC subject"
 ```
 
 Trial on a single subscription with `enforce_policies = false` (the example's
