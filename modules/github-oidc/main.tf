@@ -47,11 +47,11 @@ resource "azurerm_user_assigned_identity" "deployer" {
 resource "azurerm_federated_identity_credential" "github" {
   for_each = local.federated_credentials
 
-  name      = each.value.name
-  parent_id = azurerm_user_assigned_identity.deployer[each.value.deployer].id
-  issuer    = local.issuer
-  audience  = [local.audience]
-  subject   = each.value.subject
+  name                      = each.value.name
+  user_assigned_identity_id = azurerm_user_assigned_identity.deployer[each.value.deployer].id
+  issuer                    = local.issuer
+  audience                  = [local.audience]
+  subject                   = each.value.subject
 }
 
 resource "azurerm_role_assignment" "deployer" {
